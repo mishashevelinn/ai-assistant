@@ -52,7 +52,7 @@ pacmd load-module module-loopback source="$chosen_mic" sink=recording latency_ms
 
 # Step 5
 # With the above setup, you can start and stop recording at any time by terminating the script
-parecord --channels=2 -d recording.monitor wav.wav
+#parecord --channels=2 -d recording.monitor wav.wav
 
 
 

@@ -1,3 +1,5 @@
+#! python3.7
+
 import argparse
 import io
 import os
@@ -14,7 +16,7 @@ from sys import platform
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="medium", help="Model to use",
+    parser.add_argument("--model", default="tiny", help="Model to use",
                         choices=["tiny", "base", "small", "medium", "large"])
     parser.add_argument("--non_english", action='store_true',
                         help="Don't use the english model.")
@@ -55,10 +57,10 @@ def main():
         else:
             for index, name in enumerate(sr.Microphone.list_microphone_names()):
                 if mic_name in name:
-                    source = sr.Microphone(sample_rate=16000, device_index=index)
+                    source = sr.SoundCard()
                     break
     else:
-        source = sr.Microphone(sample_rate=16000)
+        source = sr.SoundCard()
 
     # Load / Download model
     model = args.model
@@ -117,6 +119,8 @@ def main():
                 # Write wav data to the temporary file as bytes.
                 with open(temp_file, 'w+b') as f:
                     f.write(wav_data.read())
+                file_size = os.path.getsize(temp_file)
+                print(f'File size : {file_size}')
 
                 # Read the transcription.
                 result = audio_model.transcribe(temp_file, fp16=torch.cuda.is_available())
