@@ -13,8 +13,19 @@ from tempfile import NamedTemporaryFile
 from time import sleep
 from sys import platform
 
+from llm import Assistant
+
+
+def was_addressed(name: str, context):
+    return name in context in context
+
+
+def seen_question_mark(context: str):
+    return '?' in context
+
 
 def main():
+    assistant = Assistant()
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="tiny", help="Model to use",
                         choices=["tiny", "base", "small", "medium", "large"])
@@ -32,8 +43,10 @@ def main():
                             help="Default microphone name for SpeechRecognition. "
                                  "Run this with 'list' to view available Microphones.", type=str)
     args = parser.parse_args()
-
+    # Whether the user was addresed in the analyzed convo
+    addressed = False
     # The last time a recording was retreived from the queue.
+    question_mark = False
     phrase_time = None
     # Current raw audio bytes.
     last_sample = bytes()
@@ -119,8 +132,9 @@ def main():
                 # Write wav data to the temporary file as bytes.
                 with open(temp_file, 'w+b') as f:
                     f.write(wav_data.read())
-                file_size = os.path.getsize(temp_file)
-                print(f'File size : {file_size}')
+
+                # file_size = os.path.getsize(temp_file)
+                # print(f'File size : {file_size}')
 
                 # Read the transcription.
                 result = audio_model.transcribe(temp_file, fp16=torch.cuda.is_available())
@@ -128,8 +142,16 @@ def main():
 
                 # If we detected a pause between recordings, add a new item to our transcripion.
                 # Otherwise edit the existing one.
+                if was_addressed('Misha', text):
+                    addressed = True
+                if seen_question_mark(text):
+                    question_mark = True
                 if phrase_complete:
                     transcription.append(text)
+                    if addressed and question_mark:
+                        assistant.summarize_question(' '.join(transcription))
+                        addressed = False
+                        question_mark = False
                 else:
                     transcription[-1] = text
 

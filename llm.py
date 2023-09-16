@@ -11,7 +11,9 @@ class Assistant():
                                   model_kwargs={"temperature": 0.6, "max_new_tokens": 2000})
 
         self.template = """
-        Extract the question, addressed to Misha based on the context below. Respond with the question Misha was asked.
+        Extract the question, addressed to Misha based on the context below. Don't answer the question.
+        Display the question extracted from the context to the user.
+        If you not sure how to summarize the question, just display the context to the user as a response.
 
         context: {context}
 
@@ -20,7 +22,7 @@ class Assistant():
         self.prompt = PromptTemplate(template=self.template, input_variables=["context"])
         self.llm_chain = LLMChain(prompt=self.prompt, llm=self.llm, verbose=True)
 
-    def detect_question(self, context):
+    def summarize_question(self, context):
         resp = self.llm_chain.run(
             context=context)
         print(resp)
