@@ -15,7 +15,6 @@ from sys import platform
 
 from llm import Assistant
 
-
 def was_addressed(name: str, context):
     return name in context in context
 
@@ -90,6 +89,7 @@ def main():
     with source:
         recorder.adjust_for_ambient_noise(source)
 
+
     def record_callback(_, audio: sr.AudioData) -> None:
         """
         Threaded callback function to recieve audio data when recordings finish.
@@ -105,7 +105,7 @@ def main():
 
     # Cue the user that we're ready to go.
     print("Model loaded.\n")
-
+    recording_start_time = datetime.utcnow()
     while True:
         try:
             now = datetime.utcnow()
@@ -163,6 +163,9 @@ def main():
                 print('', end='', flush=True)
 
                 # Infinite loops are bad for processors, must sleep.
+                if datetime.utcnow() - recording_start_time > timedelta(minutes=3):
+                    pass
+                    recording_start_time = datetime.utcnow()
                 sleep(0.25)
         except KeyboardInterrupt:
             break
