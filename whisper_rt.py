@@ -1,3 +1,5 @@
+#! python3.7
+
 import argparse
 import io
 import os
@@ -11,10 +13,20 @@ from tempfile import NamedTemporaryFile
 from time import sleep
 from sys import platform
 
+from llm import Assistant
+
+def was_addressed(name: str, context):
+    return name in context in context
+
+
+def seen_question_mark(context: str):
+    return '?' in context
+
 
 def main():
+    assistant = Assistant()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="medium", help="Model to use",
+    parser.add_argument("--model", default="tiny", help="Model to use",
                         choices=["tiny", "base", "small", "medium", "large"])
     parser.add_argument("--non_english", action='store_true',
                         help="Don't use the english model.")
@@ -30,8 +42,10 @@ def main():
                             help="Default microphone name for SpeechRecognition. "
                                  "Run this with 'list' to view available Microphones.", type=str)
     args = parser.parse_args()
-
+    # Whether the user was addresed in the analyzed convo
+    addressed = False
     # The last time a recording was retreived from the queue.
+    question_mark = False
     phrase_time = None
     # Current raw audio bytes.
     last_sample = bytes()
@@ -55,10 +69,10 @@ def main():
         else:
             for index, name in enumerate(sr.Microphone.list_microphone_names()):
                 if mic_name in name:
-                    source = sr.Microphone(sample_rate=16000, device_index=index)
+                    source = sr.SoundCard()
                     break
     else:
-        source = sr.Microphone(sample_rate=16000)
+        source = sr.SoundCard()
 
     # Load / Download model
     model = args.model
@@ -75,6 +89,7 @@ def main():
     with source:
         recorder.adjust_for_ambient_noise(source)
 
+
     def record_callback(_, audio: sr.AudioData) -> None:
         """
         Threaded callback function to recieve audio data when recordings finish.
@@ -90,7 +105,7 @@ def main():
 
     # Cue the user that we're ready to go.
     print("Model loaded.\n")
-
+    recording_start_time = datetime.utcnow()
     while True:
         try:
             now = datetime.utcnow()
@@ -118,14 +133,25 @@ def main():
                 with open(temp_file, 'w+b') as f:
                     f.write(wav_data.read())
 
+                # file_size = os.path.getsize(temp_file)
+                # print(f'File size : {file_size}')
+
                 # Read the transcription.
                 result = audio_model.transcribe(temp_file, fp16=torch.cuda.is_available())
                 text = result['text'].strip()
 
                 # If we detected a pause between recordings, add a new item to our transcripion.
                 # Otherwise edit the existing one.
+                if was_addressed('Misha', text):
+                    addressed = True
+                if seen_question_mark(text):
+                    question_mark = True
                 if phrase_complete:
                     transcription.append(text)
+                    if addressed and question_mark:
+                        assistant.summarize_question(' '.join(transcription))
+                        addressed = False
+                        question_mark = False
                 else:
                     transcription[-1] = text
 
@@ -137,6 +163,9 @@ def main():
                 print('', end='', flush=True)
 
                 # Infinite loops are bad for processors, must sleep.
+                if datetime.utcnow() - recording_start_time > timedelta(minutes=3):
+                    pass
+                    recording_start_time = datetime.utcnow()
                 sleep(0.25)
         except KeyboardInterrupt:
             break

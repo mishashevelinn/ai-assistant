@@ -1,4 +1,5 @@
 import datetime
+import io
 import queue
 import time
 from threading import Thread
@@ -6,6 +7,7 @@ import numpy as np
 import scipy as sp
 import pasimple
 import matplotlib.pyplot as plt
+import scipy.io.wavfile
 
 
 # Audio attributes for the recording
@@ -30,21 +32,39 @@ class Pulse2PyPipe():
             t0 = datetime.datetime.now()
             while True:
                 audio = pa.read(self.CHANNELS * self.SAMPLE_RATE * self.SAMPLE_WIDTH * chunk_dur)
-                self.pipe.put(audio)
+                audio_stream_chunk = io.BytesIO(audio)
+                self.pipe.put(audio_stream_chunk)
                 if datetime.datetime.now() - t0 > datetime.timedelta(seconds=10):
                     break
 
     def listen_threaded(self, device_name='recording.monitor', chunk_dur=2):
         produce_sound_data = Thread(target=self.listen_callback, args=(device_name, chunk_dur))
         produce_sound_data.start()
+        produce_sound_data.join()
 
+    def raw2wav(self, raw, name):
+        sig = np.frombuffer(raw, dtype='i4')
+        scipy.io.wavfile.write(name, self.SAMPLE_RATE, sig)
+
+    def concat_raw2wav(self, raw_list, name):
+        sig = None
+        for chunk in raw_list:
+            sig_chunk = np.frombuffer(chunk, dtype='i4')
+            if sig is None:
+                sig = sig_chunk
+            else:
+                sig = np.concatenate((sig, sig_chunk))
+        scipy.io.wavfile.write(name, self.SAMPLE_RATE, sig)
 
 def main():
     pipe = Pulse2PyPipe()
 
-    pipe.listen_callback(device_name='recording.monitor', chunk_dur=1)
+    pipe.listen_threaded(device_name='recording.monitor', chunk_dur=1)
     data = list(pipe.pipe.queue)
-
+    print(f'Recorded {len(data)} chunks')
+    # for i, chunk in enumerate(data):
+    #     pipe.raw2wav(chunk, f"sample_{i}.wav")
+    pipe.concat_raw2wav(data, 'full.wav')
 
 if __name__ == '__main__':
     main()
