@@ -26,3 +26,4 @@ echo "Chosen output device: $chosen_device"
 #Now we can combine it with our new recording sink into combined sink:
 
 pacmd load-module module-combine-sink sink_name=combined sink_properties=device.description=combined slaves=recording,$chosen_device
+
