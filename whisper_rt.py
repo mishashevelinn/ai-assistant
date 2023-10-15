@@ -12,8 +12,9 @@ from queue import Queue
 from tempfile import NamedTemporaryFile
 from time import sleep
 from sys import platform
-
+import pasimple
 from llm import Assistant
+
 
 def was_addressed(name: str, context):
     return name in context in context
@@ -21,6 +22,46 @@ def was_addressed(name: str, context):
 
 def seen_question_mark(context: str):
     return '?' in context
+
+class SoundCard(sr.AudioSource):
+    def __init__(self):
+        self.FORMAT = pasimple.PA_SAMPLE_S16LE
+        self.SAMPLE_WIDTH = pasimple.format2width(self.FORMAT)
+        self.CHANNELS = 1
+        self.SAMPLE_RATE = 16000
+
+        self.pa = None
+
+        self.stream = None
+        self.audio = None
+        self.CHUNK = 1024
+    def __enter__(self):
+        self.pa = pasimple.PaSimple(pasimple.PA_STREAM_RECORD, self.FORMAT, self.CHANNELS, self.SAMPLE_RATE,
+                          device_name='recording.monitor')
+        # assert self.stream is None, "This audio source is already inside a context manager"
+        # self.audio = self.pyaudio_module.PyAudio()
+        try:
+            self.stream = SoundCard.SoundCardStream(self.pa)
+        except Exception:
+            print('Error init PulseAudio')
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            self.stream.close()
+        finally:
+            self.stream = None
+            # self.audio.terminate()
+
+    class SoundCardStream(object):
+        def __init__(self, pa):
+            self.pulseaudio_stream = pa
+
+        def read(self, size):
+            return self.pulseaudio_stream.read(size)
+
+        def close(self):
+            self.pulseaudio_stream.close()
 
 
 def main():
@@ -32,9 +73,9 @@ def main():
                         help="Don't use the english model.")
     parser.add_argument("--energy_threshold", default=1000,
                         help="Energy level for mic to detect.", type=int)
-    parser.add_argument("--record_timeout", default=2,
+    parser.add_argument("--record_timeout", default=1.5,
                         help="How real time the recording is in seconds.", type=float)
-    parser.add_argument("--phrase_timeout", default=3,
+    parser.add_argument("--phrase_timeout", default=1.8,
                         help="How much empty space between recordings before we "
                              "consider it a new line in the transcription.", type=float)
     if 'linux' in platform:
@@ -69,10 +110,10 @@ def main():
         else:
             for index, name in enumerate(sr.Microphone.list_microphone_names()):
                 if mic_name in name:
-                    source = sr.SoundCard()
+                    source = SoundCard()
                     break
     else:
-        source = sr.SoundCard()
+        source = SoundCard()
 
     # Load / Download model
     model = args.model
@@ -88,7 +129,6 @@ def main():
 
     with source:
         recorder.adjust_for_ambient_noise(source)
-
 
     def record_callback(_, audio: sr.AudioData) -> None:
         """
@@ -142,16 +182,8 @@ def main():
 
                 # If we detected a pause between recordings, add a new item to our transcripion.
                 # Otherwise edit the existing one.
-                if was_addressed('Misha', text):
-                    addressed = True
-                if seen_question_mark(text):
-                    question_mark = True
                 if phrase_complete:
                     transcription.append(text)
-                    if addressed and question_mark:
-                        assistant.summarize_question(' '.join(transcription))
-                        addressed = False
-                        question_mark = False
                 else:
                     transcription[-1] = text
 
@@ -163,9 +195,6 @@ def main():
                 print('', end='', flush=True)
 
                 # Infinite loops are bad for processors, must sleep.
-                if datetime.utcnow() - recording_start_time > timedelta(minutes=3):
-                    pass
-                    recording_start_time = datetime.utcnow()
                 sleep(0.25)
         except KeyboardInterrupt:
             break
